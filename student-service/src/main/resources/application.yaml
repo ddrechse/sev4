@@ -1,0 +1,92 @@
+# ============================================================================
+# Helidon SE Student Service - Application Configuration
+# ============================================================================
+
+# ============================================================================
+# Server Configuration
+# ============================================================================
+server:
+  port: 8080
+  host: 0.0.0.0
+  # features:
+  #   eureka:
+  #     client:
+  #       base-uri: ${eureka.client.service-url.defaultZone}
+  #       connect-timeout: PT10S
+  #       read-timeout: PT30S
+  #     instance:
+  #       name: "student-helidon"
+  #       hostname: ${eureka.instance.hostname}
+  #       prefer-ip-address: ${eureka.instance.preferIpAddress:true}
+
+# ============================================================================
+# Application Properties
+# ============================================================================
+app:
+  greeting: "Hello"
+
+# ============================================================================
+# OpenTelemetry and Metrics Configuration
+# ============================================================================
+# Metrics disabled - COMMENTED OUT
+# metrics:
+#   rest-request:
+#     enabled: true
+
+otel:
+  sdk:
+    disabled: false
+  service:
+    name: "student"
+
+# ============================================================================
+# Helidon Data Configuration
+# ============================================================================
+# This section configures Helidon Data with Hikari datasource and JPA.
+# Environment variables (DB_JDBC_URL, DB_USERNAME, DB_PASSWORD) are automatically
+# resolved by Helidon Config.
+# ============================================================================
+
+data:
+  # Define SQL datasources with Hikari provider
+  sources:
+    sql:
+      - name: "student"
+        provider.hikari:
+          # Oracle JDBC connection properties from environment variables
+          jdbc-url: ${DB_JDBC_URL}
+          username: ${DB_USERNAME}
+          password: ${DB_PASSWORD}
+          driver-class-name: "oracle.jdbc.OracleDriver"
+
+          # Hikari Connection Pool Settings
+          connection-timeout: 30000      # 30 seconds
+          idle-timeout: 600000           # 10 minutes
+          max-lifetime: 1800000          # 30 minutes
+          minimum-idle: 5
+          maximum-pool-size: 20
+          pool-name: "OracleHikariPool"
+
+          # Oracle-specific optimizations
+          connection-test-query: "SELECT 1 FROM DUAL"
+          auto-commit: false
+
+  # JPA Persistence Units configuration
+  persistence-units:
+    jakarta:
+      - name: "@default"
+        data-source: "student"        # References the datasource defined above
+
+        # JPA/Hibernate properties
+        properties:
+          # Schema generation strategy
+          # Options: none, create, create-drop, validate, update
+          # Use "create" for development, "validate" or "none" for production
+          jakarta.persistence.schema-generation.database.action: "create"
+
+          # SQL logging for debugging
+          hibernate.show_sql: "true"
+          hibernate.format_sql: "true"
+
+          # Second level cache (disabled)
+          hibernate.cache.use_second_level_cache: "false"

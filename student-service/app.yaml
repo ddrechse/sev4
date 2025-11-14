@@ -1,0 +1,37 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: student-service
+  labels:
+    app: student-service
+spec:
+  type: ClusterIP
+  selector:
+    app: student-service
+  ports:
+    - name: tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: student-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: student-service
+  template:
+    metadata:
+      labels:
+        app: student-service
+        version: v1
+    spec:
+      containers:
+      - name: student-service
+        image: student-service
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
