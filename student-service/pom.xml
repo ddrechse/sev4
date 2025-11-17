@@ -281,6 +281,10 @@
             </plugin>
 
             <!-- Helidon Service Maven Plugin -->
+            <!-- DISABLED: Official Helidon 4.x Oracle examples don't use this plugin -->
+            <!-- Verified: dbclient/oracle, integrations/cdi/datasource/hikaricp-oracle, integrations/cdi/jpa/oracle -->
+            <!-- ApplicationBinding will use EmptyBinding fallback with runtime service discovery (standard pattern) -->
+            <!--
             <plugin>
                 <groupId>io.helidon.service</groupId>
                 <artifactId>helidon-service-maven-plugin</artifactId>
@@ -294,6 +298,7 @@
                     </execution>
                 </executions>
             </plugin>
+            -->
         </plugins>
     </build>
 </project>
