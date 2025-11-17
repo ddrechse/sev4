@@ -54,10 +54,10 @@ data:
       - name: "student"
         provider.hikari:
           # Oracle JDBC connection properties from environment variables
-          jdbc-url: ${DB_JDBC_URL}
+          url: ${DB_JDBC_URL}
           username: ${DB_USERNAME}
           password: ${DB_PASSWORD}
-          driver-class-name: "oracle.jdbc.OracleDriver"
+          jdbc-driver-class-name: "oracle.jdbc.OracleDriver"
 
           # Hikari Connection Pool Settings
           connection-timeout: 30000      # 30 seconds
