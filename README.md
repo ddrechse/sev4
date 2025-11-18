@@ -142,7 +142,7 @@ docker run -d \
   --name student-service \
   -p 7001:7001 \
   -e DB_PASSWORD=student_pass \
-  us-ashburn-1.ocir.io/maacloud/student:2.0-SNAPSHOT
+  us-ashburn-1.ocir.io/mytenancy/student:2.0-SNAPSHOT
 ```
 
 ## API Endpoints
@@ -433,7 +433,7 @@ minimumIdle: 10
 
 ### Docker Image
 
-- **Registry**: `us-ashburn-1.ocir.io/maacloud/student`
+- **Registry**: `us-ashburn-1.ocir.io/mytenancy/student`
 - **Tag**: `2.0-SNAPSHOT`
 - **Size**: 517MB
 - **Platform**: linux/arm64, linux/amd64
@@ -457,7 +457,7 @@ spec:
     spec:
       containers:
       - name: student-service
-        image: us-ashburn-1.ocir.io/maacloud/student:2.0-SNAPSHOT
+        image: us-ashburn-1.ocir.io/mytenancy/student:2.0-SNAPSHOT
         ports:
         - containerPort: 7001
         env:
