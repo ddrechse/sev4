@@ -2,6 +2,21 @@
 
 A modern, cloud-native microservice for managing student records built with Helidon SE 4.3.2. Features full CRUD operations, search capabilities, pagination, and enrollment tracking with Oracle Database backend.
 
+**🚀 Primary Deployment Target:** Oracle Backend as a Service (OBaaS)
+**📦 Version:** 2.0-SNAPSHOT
+**🔧 Framework:** Helidon SE 4.3.2 with compile-time service injection
+**💾 Database:** Oracle Autonomous Database (ADB)
+**📊 Observability:** OpenTelemetry + SigNoz + Eureka
+
+## Quick Start for OBaaS Deployment
+
+1. **Build**: `mvn clean package -DskipTests`
+2. **Docker**: `mvn k8s:build`
+3. **Push**: `docker push us-ashburn-1.ocir.io/<tenancy>/<repo>/student:2.0-SNAPSHOT`
+4. **Deploy**: `helm install student-service ./helm-chart -f values.yaml`
+
+**👉 See [Deploying to OBaaS Environment](#deploying-to-obaas-environment) for complete instructions.**
+
 ## Features
 
 - **Student Management**: Complete CRUD operations for student records
@@ -39,10 +54,301 @@ A modern, cloud-native microservice for managing student records built with Heli
 
 ## Prerequisites
 
+### For OBaaS Deployment (Primary Use Case)
 - **Java 21** or later ([Download](https://adoptium.net/))
 - **Maven 3.9+** ([Download](https://maven.apache.org/download.cgi))
 - **Docker** (for containerization) ([Download](https://www.docker.com/))
+- **OBaaS Platform Access** - Oracle Backend as a Service environment
+- **OCIR Access** - Oracle Cloud Infrastructure Registry for pushing images
+
+### For Local Development (Optional)
 - **Oracle Database 23.4 FREE** ([Download](https://www.oracle.com/database/free/))
+- **Docker** or **Colima/Rancher Desktop** for local containers
+
+## Deploying to OBaaS Environment
+
+**Primary deployment target:** This application is designed to run in the OBaaS (Oracle Backend as a Service) platform, which provides automated infrastructure and observability services.
+
+### What OBaaS Provides Automatically
+
+The OBaaS Helm chart automatically configures and provisions:
+
+#### Infrastructure Services
+- **Oracle ADB Database**: Wallet mounted at `/oracle/tnsadmin` with SSL/TLS keystore configuration
+- **Eureka Service Discovery**: Auto-registration with dynamic instance IDs and health check URLs
+- **OpenTelemetry/SigNoz**: OTLP exporter configured with `http/protobuf` protocol for metrics and tracing
+- **Kubernetes Health Probes**: Liveness and readiness checks on Helidon SE4 endpoints
+
+#### Automatic Configuration Injection
+- Database connection strings with `TNS_ADMIN` paths
+- Environment variables for datasource: `javax.sql.DataSource.<name>.*`
+- SSL keystore properties in `JAVA_TOOL_OPTIONS`
+- OTEL service name and endpoint configuration
+- Eureka client registration with pod IP and hostname
+
+### What Helidon SE 4.3.2 Developers Must Provide
+
+#### 1. Application Configuration (`src/main/resources/application.yaml`)
+
+```yaml
+# CRITICAL: Service name MUST match Helm values.yaml obaas.helidon.otel.serviceName
+otel:
+  service:
+    name: "student"
+
+# CRITICAL: Datasource name MUST match Helm values.yaml obaas.helidon.datasource.name
+db:
+  source: "student"
+
+# Server configuration
+server:
+  port: 7001
+  host: 0.0.0.0
+
+# Application settings
+app:
+  greeting: "Hello"
+```
+
+#### 2. Required Helidon SE4 Observability Endpoints
+
+**Your application MUST expose these endpoints:**
+
+```
+/observe/health/live    # Liveness probe
+/observe/health/ready   # Readiness probe
+/observe/health         # Overall health
+/observe/metrics        # Metrics endpoint
+```
+
+These are automatically provided by including the required dependencies (see below).
+
+#### 3. Required Maven Dependencies
+
+```xml
+<!-- Observability -->
+<dependency>
+    <groupId>io.helidon.webserver.observe</groupId>
+    <artifactId>helidon-webserver-observe</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.helidon.webserver.observe</groupId>
+    <artifactId>helidon-webserver-observe-health</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.helidon.webserver.observe</groupId>
+    <artifactId>helidon-webserver-observe-metrics</artifactId>
+</dependency>
+
+<!-- Service Registry (required for observability auto-configuration) -->
+<dependency>
+    <groupId>io.helidon.service</groupId>
+    <artifactId>helidon-service-registry</artifactId>
+</dependency>
+```
+
+#### 4. Main Method Configuration
+
+**Your `Main.java` must call `ServiceRegistryManager.start()`:**
+
+```java
+public static void main(String[] args) {
+    // Start service registry - auto-configures observability
+    ServiceRegistryManager.start();
+
+    // Start Helidon
+    WebServer.builder()
+        .port(7001)
+        .routing(routing -> routing
+            .register("/students", new StudentEndpoint())
+            .register("/greet", new GreetEndpoint())
+        )
+        .build()
+        .start();
+}
+```
+
+#### 5. Maven Annotation Processing
+
+Ensure annotation processors are configured in `pom.xml`:
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+        <annotationProcessorPaths>
+            <path>
+                <groupId>io.helidon.bundles</groupId>
+                <artifactId>helidon-bundles-apt</artifactId>
+                <version>${helidon.version}</version>
+            </path>
+            <path>
+                <groupId>io.helidon.data.jakarta.persistence</groupId>
+                <artifactId>helidon-data-jakarta-persistence-codegen</artifactId>
+                <version>${helidon.version}</version>
+            </path>
+        </annotationProcessorPaths>
+    </configuration>
+</plugin>
+```
+
+### Critical Configuration Alignment
+
+**These values MUST match exactly between Helm `values.yaml` and your application:**
+
+| Helm values.yaml | Application Config | What Breaks if Mismatched |
+|------------------|-------------------|---------------------------|
+| `obaas.helidon.datasource.name: "student"` | `db.source: "student"` | **DataSource not found** error |
+| `obaas.helidon.otel.serviceName: "student"` | `otel.service.name: "student"` | Wrong service name in SigNoz traces |
+| `obaas.helidon.version: "SE4"` | Helidon SE 4.x with `/observe/*` endpoints | Health probe 404 failures |
+
+### OBaaS Deployment Workflow
+
+#### Step 1: Build Docker Image
+
+```bash
+# Set Docker host (if using Rancher Desktop/Colima)
+export DOCKER_HOST=unix:///Users/$USER/.rd/docker.sock
+
+# Build application
+mvn clean package -DskipTests
+
+# Build Docker image
+mvn k8s:build
+```
+
+#### Step 2: Push to Oracle Container Registry (OCIR)
+
+```bash
+# Tag image for OCIR
+docker tag student:2.0-SNAPSHOT \
+  us-ashburn-1.ocir.io/<tenancy>/<repo>/student:2.0-SNAPSHOT
+
+# Login to OCIR (use auth token as password)
+docker login us-ashburn-1.ocir.io
+
+# Push image
+docker push us-ashburn-1.ocir.io/<tenancy>/<repo>/student:2.0-SNAPSHOT
+```
+
+#### Step 3: Configure Helm Values
+
+Create or update `values.yaml`:
+
+```yaml
+obaas:
+  helidon:
+    version: "SE4"  # CRITICAL: Must be SE4 for Helidon SE 4.x
+    otel:
+      serviceName: "student"  # MUST match application.yaml otel.service.name
+    datasource:
+      name: "student"  # MUST match application.yaml db.source
+
+image:
+  repository: us-ashburn-1.ocir.io/<tenancy>/<repo>/student
+  tag: "2.0-SNAPSHOT"
+  pullPolicy: Always
+
+service:
+  type: LoadBalancer
+  port: 7001
+
+# Database configuration (ADB wallet auto-mounted by OBaaS)
+database:
+  wallet:
+    mountPath: /oracle/tnsadmin
+```
+
+#### Step 4: Deploy via Helm
+
+```bash
+# Deploy to OBaaS
+helm install student-service ./helm-chart \
+  -f values.yaml \
+  --namespace student \
+  --create-namespace
+
+# Check deployment status
+kubectl get pods -n student
+
+# View logs
+kubectl logs -f deployment/student-service -n student
+
+# Check health
+kubectl exec -it deployment/student-service -n student -- \
+  curl localhost:7001/observe/health
+```
+
+### Verifying OBaaS Integration
+
+#### Check Database Connection
+```bash
+# Check environment variables injected by OBaaS
+kubectl exec -it deployment/student-service -n student -- env | grep javax.sql
+```
+
+Should show:
+```
+javax.sql.DataSource.student.dataSource.url=jdbc:oracle:thin:@<tns_name>?TNS_ADMIN=/oracle/tnsadmin
+javax.sql.DataSource.student.dataSource.user=<db_user>
+javax.sql.DataSource.student.dataSource.password=***
+```
+
+#### Check Eureka Registration
+```bash
+# Application should appear in Eureka dashboard
+curl http://eureka-service:8761/eureka/apps/STUDENT
+```
+
+#### Check OpenTelemetry/SigNoz
+- Traces should appear in SigNoz UI
+- Service name should match `otel.service.name: "student"`
+- Metrics should be collected automatically
+
+### Common OBaaS Deployment Issues
+
+#### Issue: Health Probes Failing (404)
+
+**Cause**: Application not exposing SE4 endpoints or wrong Helidon version in values.yaml
+
+**Solution**:
+1. Verify `obaas.helidon.version: "SE4"` in values.yaml
+2. Check endpoints exist: `curl localhost:7001/observe/health`
+3. Ensure dependencies include `helidon-webserver-observe-health`
+
+#### Issue: DataSource Not Found
+
+**Cause**: Datasource name mismatch between Helm and application config
+
+**Solution**:
+```yaml
+# Helm values.yaml
+obaas.helidon.datasource.name: "student"
+
+# application.yaml
+db:
+  source: "student"  # MUST MATCH
+```
+
+#### Issue: Wrong Service Name in SigNoz
+
+**Cause**: OTEL service name mismatch
+
+**Solution**:
+```yaml
+# Helm values.yaml
+obaas.helidon.otel.serviceName: "student"
+
+# application.yaml
+otel:
+  service:
+    name: "student"  # MUST MATCH
+```
+
+## Local Development Setup
+
+For local testing outside of OBaaS:
 
 ## Database Setup
 
@@ -429,16 +735,37 @@ maximumPoolSize: 20
 minimumIdle: 10
 ```
 
-## Deployment
+## Deployment Summary
 
-### Docker Image
+### Primary: OBaaS Deployment
 
-- **Registry**: `us-ashburn-1.ocir.io/mytenancy/student`
+**See the [Deploying to OBaaS Environment](#deploying-to-obaas-environment) section above** for complete deployment instructions.
+
+The OBaaS platform provides:
+- ✅ Automated database provisioning (Oracle ADB)
+- ✅ Service discovery (Eureka)
+- ✅ Observability stack (OpenTelemetry/SigNoz)
+- ✅ Health monitoring
+- ✅ Auto-configured secrets and environment variables
+
+### Alternative: Standalone Kubernetes Deployment
+
+For deployment to standard Kubernetes (without OBaaS):
+
+#### Docker Image Details
+
+- **Registry**: `us-ashburn-1.ocir.io/maacloud/student`
 - **Tag**: `2.0-SNAPSHOT`
 - **Size**: 517MB
 - **Platform**: linux/arm64, linux/amd64
 
-### Kubernetes Deployment
+#### Sample Kubernetes Manifests
+
+**Note:** When deploying standalone (without OBaaS), you must manually configure:
+- Database secrets
+- Connection strings
+- Observability endpoints
+- Service discovery
 
 ```yaml
 apiVersion: apps/v1
@@ -457,7 +784,7 @@ spec:
     spec:
       containers:
       - name: student-service
-        image: us-ashburn-1.ocir.io/mytenancy/student:2.0-SNAPSHOT
+        image: us-ashburn-1.ocir.io/maacloud/student:2.0-SNAPSHOT
         ports:
         - containerPort: 7001
         env:
@@ -466,18 +793,34 @@ spec:
             secretKeyRef:
               name: student-db-secret
               key: password
+        - name: javax.sql.DataSource.student-db.dataSource.url
+          value: "jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1"
+        - name: javax.sql.DataSource.student-db.dataSource.user
+          value: "student_user"
         livenessProbe:
           httpGet:
-            path: /observe/health
+            path: /observe/health/live
             port: 7001
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /observe/health
+            path: /observe/health/ready
             port: 7001
           initialDelaySeconds: 10
           periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: student-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 7001
+    targetPort: 7001
+  selector:
+    app: student-service
 ```
 
 ## Troubleshooting
@@ -597,12 +940,18 @@ Copyright (c) 2024 Oracle and/or its affiliates.
 ## Version History
 
 - **2.0-SNAPSHOT** (Current)
+  - **OBaaS-ready deployment** with automated infrastructure
   - Aligned with official Helidon 4.x patterns
+  - SE4 observability endpoints (`/observe/*`)
+  - Service Registry integration for auto-configuration
+  - OpenTelemetry/SigNoz integration
+  - Eureka service discovery support
   - Optimized dependency scopes
   - Enhanced connection pooling
-  - Improved documentation
+  - Comprehensive OBaaS deployment documentation
 
 - **1.0-SNAPSHOT**
   - Initial release
   - Basic CRUD operations
   - Oracle database integration
+  - Local deployment only
